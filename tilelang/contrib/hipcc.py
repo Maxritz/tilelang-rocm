@@ -80,6 +80,21 @@ def compile_hip(code, target_format="hsaco", arch=None, options=None, path_targe
     cmd += ["-gline-tables-only"]
     if isinstance(arch, str):
         cmd += [f"--offload-arch={arch}"]
+
+    # Pass --rocm-device-lib-path so clang can locate the ROCm device libraries
+    # (bitcode files under lib/llvm/amdgcn/bitcode).  Without this, clang
+    # errors with "cannot find ROCm device library" on Windows installs
+    # where the default search path does not include the ROCm root.
+    try:
+        _rocm_path = find_rocm_path()
+        if _rocm_path and os.path.exists(_rocm_path):
+            dev_lib = os.path.join(_rocm_path, "lib", "llvm", "amdgcn", "bitcode")
+            if os.path.isdir(dev_lib):
+                cmd += [f"--rocm-device-lib-path={dev_lib}"]
+            else:
+                cmd += [f"--rocm-path={_rocm_path}"]
+    except RuntimeError:
+        pass
     if target_format == "hsaco":
         cmd += ["--genco"]
     if options:

@@ -232,22 +232,29 @@ def have_matrixcore(compute_version=None):
 
 
 @tvm_ffi.register_global_func("tvm_callback_rocm_get_arch", override=True)
-def get_rocm_arch(rocm_path="/opt/rocm"):
+def get_rocm_arch(rocm_path=None):
     """Utility function to get the AMD GPU architecture
 
     Parameters
     ----------
-    rocm_path : str
-        The path to rocm installation directory
+    rocm_path : str, optional
+        The path to rocm installation directory.  When ``None`` the
+        function auto-detects via :func:`find_rocm_path`.
 
     Returns
     -------
     gpu_arch : str
         The AMD GPU architecture
     """
+    if rocm_path is None:
+        try:
+            rocm_path = find_rocm_path()
+        except RuntimeError:
+            pass
+
     gpu_arch = "gfx900"
     # check if rocm is installed
-    if not os.path.exists(rocm_path):
+    if rocm_path is None or not os.path.exists(rocm_path):
         print("ROCm not detected, using default gfx900")
         return gpu_arch
     try:
@@ -259,13 +266,40 @@ def get_rocm_arch(rocm_path="/opt/rocm"):
         if match:
             gpu_arch = match.group(1)
         return gpu_arch
-    except subprocess.CalledProcessError:
-        print(
-            f"Unable to execute rocminfo command, \
-                please ensure ROCm is installed and you have an AMD GPU on your system.\
-                    using default {gpu_arch}."
-        )
-        return gpu_arch
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    # Fallback 1: derive arch from the ROCm install path
+    # e.g. G:\ROCM10RT-gfx1201  or  /opt/rocm-gfx1201 → gfx1201
+    match = re.search(r"(gfx\d+[a-zA-Z]*)", os.path.basename(os.path.normpath(rocm_path)))
+    if match:
+        return match.group(1)
+
+    # Fallback 2: use the TVM runtime to detect the GPU compute version
+    try:
+        device = tvm.rocm(0)
+        if device.exist:
+            cv = device.compute_version
+            major, minor = parse_compute_version(cv)
+            # Map compute version major → generation arch prefix
+            #   10 → gfx10xx (RDNA2), 11 → gfx11xx (RDNA3), 12 → gfx12xx (RDNA4)
+            if major == 10:
+                return "gfx1030"
+            elif major == 11:
+                return "gfx1100"
+            elif major == 12:
+                return "gfx1200"
+            else:
+                gpu_arch = f"gfx{major}00"
+                print(f"Detected compute version {cv}, mapping to {gpu_arch}")
+                return gpu_arch
+    except Exception:
+        pass
+
+    print(
+        f"Unable to detect AMD GPU architecture, using default {gpu_arch}."
+    )
+    return gpu_arch
 
 
 # Well-known ROCm install prefix used as the last-resort hipcc candidate.

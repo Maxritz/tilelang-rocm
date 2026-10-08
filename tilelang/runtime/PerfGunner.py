@@ -27,7 +27,6 @@ import json
 import os
 
 try:
-    from tvm import _api_runtime
     import tvm.ffi as ffi
     _HAS_FFI = True
 except ImportError:
@@ -39,7 +38,7 @@ __all__ = ["PerfGunner", "perf_region"]
 def _get(name: str, default=None):
     if not _HAS_FFI:
         return default
-    return ffi.get_global_func(f"tl.Perf{name}", allow_return_none=True)
+    return ffi.get_global_func(f"tl.Perf{name}", True)
 
 
 class PerfGunner:
@@ -124,8 +123,8 @@ class PerfGunner:
 
         # Trace table
         if traces:
-            lines.append(f"\n  [Kernel Traces — {len(traces)} entries]")
-            hdr = f"  {'name':<32} {'GPU μs':>10} {'CPU μs':>10} {'alloc MB':>10}"
+            lines.append(f"\n  [Kernel Traces - {len(traces)} entries]")
+            hdr = f"  {'name':<32} {'GPU us':>10} {'CPU us':>10} {'alloc MB':>10}"
             lines.append(hdr)
             lines.append("  " + "-" * (len(hdr) - 2))
             total_gpu = 0
