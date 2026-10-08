@@ -35,8 +35,9 @@ bool TargetIsRDNA(Target target) {
     return false;
   if (target->attrs.count("mcpu")) {
     std::string mcpu = Downcast<ffi::String>(target->attrs.at("mcpu"));
-    // gfx11xx, gfx12xx are RDNA architectures
-    return mcpu.find("gfx11") == 0 || mcpu.find("gfx12") == 0;
+    // gfx10xx (RDNA2), gfx11xx (RDNA3), gfx12xx (RDNA4) are RDNA architectures
+    return mcpu.find("gfx10") == 0 || mcpu.find("gfx11") == 0 ||
+           mcpu.find("gfx12") == 0;
   }
   return false;
 }
@@ -76,6 +77,8 @@ int TargetGetRDNAGeneration(Target target) {
     return 0;
   if (target->attrs.count("mcpu")) {
     std::string mcpu = Downcast<ffi::String>(target->attrs.at("mcpu"));
+     if (mcpu.rfind("gfx10", 0) == 0)
+      return 10;
     if (mcpu.rfind("gfx11", 0) == 0)
       return 11;
     if (mcpu.rfind("gfx12", 0) == 0)

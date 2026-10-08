@@ -22,8 +22,9 @@ namespace rocm {
 
 namespace {
 
-constexpr const char *kROCmMFMA = "rocm.mfma";
-constexpr const char *kROCmWMMA = "rocm.wmma";
+  constexpr const char *kROCmMFMA = "rocm.mfma";
+  constexpr const char *kROCmWMMA = "rocm.wmma";
+  constexpr const char *kROCmFMA = "rocm.fma";
 
 std::pair<int, int>
 ComputeDefaultWarpPartition(const GemmWarpPolicyNode &policy, int M, int N,
@@ -112,6 +113,12 @@ struct Gemm {
       return kROCmMFMA;
     }
     if (TargetIsRDNA(target)) {
+      int rdna_gen = TargetGetRDNAGeneration(target);
+      // RDNA2 (gfx10xx) has no WMMA tensor intrinsics. Fall back to the
+      // scalar FMA path so the Python side resolves a non-tensorized GEMM.
+      if (rdna_gen == 10) {
+        return kROCmFMA;
+      }
       return kROCmWMMA;
     }
     LOG(FATAL) << "Unsupported ROCm target for gemm: " << target->str();

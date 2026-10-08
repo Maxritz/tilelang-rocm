@@ -49,6 +49,12 @@ def test_determine_target_adds_known_gfx12_thread_warp_size():
     assert int(target.attrs["thread_warp_size"]) == 32
 
 
+def test_determine_target_adds_known_gfx10_thread_warp_size():
+    target = determine_target({"kind": "hip", "mcpu": "gfx1030"}, return_object=True)
+    assert target_get_mcpu(target) == "gfx1030"
+    assert int(target.attrs["thread_warp_size"]) == 32
+
+
 def test_determine_target_rejects_legacy_option_string():
     with pytest.raises(AssertionError, match="Pass target options as a dict"):
         determine_target("hip -mcpu=gfx1151", return_object=True)
@@ -88,6 +94,22 @@ def test_rdna_gfx1151_target_classification():
     assert target_get_warp_size(target) == 32
 
 
+def test_rdna_gfx1200_target_classification():
+    target = _hip_target("gfx1200")
+    assert target_is_rdna(target)
+    assert not target_is_cdna(target)
+    assert target_get_rdna_generation(target) == 12
+    assert target_get_warp_size(target) == 32
+
+
+def test_rdna_gfx1030_target_classification():
+    target = _hip_target("gfx1030")
+    assert target_is_rdna(target)
+    assert not target_is_cdna(target)
+    assert target_get_rdna_generation(target) == 10
+    assert target_get_warp_size(target) == 32
+
+
 def test_carver_routes_rdna_without_instantiating_device(monkeypatch):
     import torch
 
@@ -108,17 +130,17 @@ def test_carver_routes_rdna_without_instantiating_device(monkeypatch):
 
 
 @tilelang.testing.requires_rocm
-def test_carver_rejects_unsupported_rdna_generations(monkeypatch):
+def test_carver_rejects_truly_unsupported_rdna_generations(monkeypatch):
     import tilelang.carver.arch as arch_mod
 
     def fake_cdna(target):
         return ("cdna", target)
 
-    # gfx11 and gfx12 are the only generations `target_is_rdna` reports, so the
-    # unsupported-generation guard is unreachable without forcing the value.
+    # Gen 9 (pre-RDNA / CDNA overlap) and gen 13 (future) are not supported
+    # by the RDNA device model.  Gen 10 (RDNA2) is now a valid generation.
     monkeypatch.setattr(arch_mod, "CDNA", fake_cdna)
-    monkeypatch.setattr(arch_mod, "target_get_rdna_generation", lambda target: 10)
-    with pytest.raises(ValueError, match="gfx11/gfx12 targets only"):
+    monkeypatch.setattr(arch_mod, "target_get_rdna_generation", lambda target: 13)
+    with pytest.raises(ValueError, match="gfx10/gfx11/gfx12 targets only"):
         arch_mod.get_arch(_hip_target("gfx1200"))
 
 
@@ -126,8 +148,8 @@ def test_carver_rejects_unsupported_rdna_generations(monkeypatch):
 def test_rdna_device_model_rejects_unsupported_generation_before_device_probe(monkeypatch):
     from tilelang.carver.arch import rdna as rdna_mod
 
-    monkeypatch.setattr(rdna_mod, "target_get_rdna_generation", lambda target: 10)
-    with pytest.raises(ValueError, match="gfx11/gfx12 targets only"):
+    monkeypatch.setattr(rdna_mod, "target_get_rdna_generation", lambda target: 13)
+    with pytest.raises(ValueError, match="gfx10/gfx11/gfx12 targets only"):
         rdna_mod.RDNA(_hip_target("gfx1200"))
 
 
@@ -141,7 +163,12 @@ def test_rdna_tensor_instruction_lookup_is_generation_aware():
         assert arch.get_avaliable_tensorintrin_shapes() == [[16, 16]]
         assert isinstance(arch.available_tensor_instructions, list)
 
+    # Gen 10 (RDNA2) has no WMMA tensor intrinsics.
     arch.rdna_generation = 10
+    assert arch.get_avaliable_tensorintrin_shapes() == []
+    assert arch.available_tensor_instructions == []
+
+    arch.rdna_generation = 13
     with pytest.raises(ValueError, match="Unsupported RDNA generation"):
         arch.get_avaliable_tensorintrin_shapes()
 
@@ -151,6 +178,7 @@ def test_rdna_internal_tuning_config_allows_mcpu_overrides():
 
     default = _get_rdna_tuning_config("gfx1100")
     gfx1151 = _get_rdna_tuning_config("gfx1151:sramecc+:xnack-")
+    gfx1030 = _get_rdna_tuning_config("gfx1030")
 
     assert default.preferred_warps_per_block == 4
     assert default.pipeline_stage == 1
@@ -158,6 +186,8 @@ def test_rdna_internal_tuning_config_allows_mcpu_overrides():
     assert gfx1151.preferred_warps_per_block == 4
     assert gfx1151.pipeline_stage == 2
     assert gfx1151.reduction_step_for_dtype_bits(16) == 32
+    assert gfx1030.preferred_warps_per_block == 4
+    assert gfx1030.pipeline_stage == 1
 
 
 if __name__ == "__main__":

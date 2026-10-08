@@ -164,6 +164,7 @@ if not env.is_light_import():
             is_cache_enabled,
             get_runtime_library_dirs,
             prepend_dll_search_path,
+            TL_LIBS,
         )
         from . import libinfo
 
@@ -173,6 +174,15 @@ if not env.is_light_import():
             # then register all native dependency dirs with the secure DLL
             # loader used by Python 3.8+ for absolute-path DLL loads.
             prepend_dll_search_path(runtime_library_dirs)
+            # Pre-load the dev-build tvm_ffi.dll with RTLD_GLOBAL so that
+            # Windows resolves tvm_runtime.dll's dependency to the correct
+            # version (not the pip-installed one that get_runtime_library_dirs
+            # may have pulled in from site-packages).
+            for _tl_lib_dir in TL_LIBS:
+                _ffi_path = Path(_tl_lib_dir) / "tvm_ffi.dll"
+                if _ffi_path.is_file():
+                    ctypes.CDLL(str(_ffi_path), mode=ctypes.RTLD_GLOBAL)
+                    break
             dll_dirs = dict.fromkeys([*libinfo.get_dll_directories(), *runtime_library_dirs])
             _dll_handles = [os.add_dll_directory(p) for p in dll_dirs]
         else:

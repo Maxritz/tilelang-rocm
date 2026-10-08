@@ -388,6 +388,7 @@ file(GLOB TILE_LANG_SRCS
 # Always include CPU-safe runtime helpers
 list(APPEND TILE_LANG_SRCS
   src/runtime/error_helpers.cc
+  src/runtime/perfgunner.cc
 )
 # Backend-local CMake files own native source lists, stubs, include paths, and
 # compile definitions. Top-level CMake only selects and delegates.
@@ -398,6 +399,16 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/src/metal/CMakeLists.txt")
 include("${CMAKE_CURRENT_SOURCE_DIR}/src/webgpu/CMakeLists.txt")
 include("${CMAKE_CURRENT_SOURCE_DIR}/src/ascend/CMakeLists.txt")
 list(REMOVE_DUPLICATES TILE_LANG_SRCS)
+
+# Lightweight performance measurement utilities (GPU timing, VRAM/RAM accounting).
+# Enable with -DTILELANG_ENABLE_PERF=ON (or set env TILELANG_PERF=1 at runtime).
+option(TILELANG_ENABLE_PERF "Enable TileLang runtime performance measurement" OFF)
+if(TILELANG_PERF)
+  set(TILELANG_ENABLE_PERF ON)
+endif()
+if(TILELANG_ENABLE_PERF)
+  add_compile_definitions(TILELANG_ENABLE_PERF=1)
+endif()
 
 set(USE_Z3      ON CACHE STRING "Use Z3 SMT solver for TileLang optimizations")
 set(USE_PYPI_Z3 ON CACHE BOOL   "Use Z3 provided by PyPI z3-solver package")

@@ -7,7 +7,11 @@ from .cuda import TensorInstruction
 from tilelang.rocm.target import target_get_mcpu, target_get_rdna_generation
 
 _RDNA_DEFAULT_LDS_SIZE = 64 * 1024
+_RDNA2_LDS_SIZE = 64 * 1024  # RDNA2 (gfx10xx): 128 kB per WGP, 64 kB per CU mode
+# RDNA2 (gfx10xx) has no WMMA tensor intrinsics; gen 10 maps to an empty tuple
+# so the carver falls through to the scalar-FMA / Roller path.
 _RDNA_TENSOR_INSTRUCTIONS = {
+    10: (),
     11: (TensorInstruction("wmma", [16, 16]),),
     12: (TensorInstruction("wmma", [16, 16]),),
 }
@@ -32,6 +36,18 @@ class _RDNATuningConfig:
 
 _RDNA_DEFAULT_TUNING = _RDNATuningConfig()
 _RDNA_TUNING_OVERRIDES: dict[str, _RDNATuningConfig] = {
+    # RDNA2 (gfx1030/gfx1035): no WMMA tensor intrinsics, uses scalar-FMA path.
+    # Conservative defaults suitable for the Roller non-tensorized schedule.
+    "gfx1030": _RDNATuningConfig(
+        preferred_warps_per_block=4,
+        pipeline_stage=1,
+        reduction_step_by_dtype_bits=((16, 32),),
+    ),
+    "gfx1035": _RDNATuningConfig(
+        preferred_warps_per_block=4,
+        pipeline_stage=1,
+        reduction_step_by_dtype_bits=((16, 32),),
+    ),
     # Strix Halo / Radeon 8060S: measured best large FP16 GEMM configs use
     # 128-thread blocks, K tiles starting at 32, and two software pipeline stages.
     "gfx1151": _RDNATuningConfig(
@@ -68,9 +84,9 @@ class RDNA(TileDevice):
         self.mcpu = target_get_mcpu(target)
         self.rdna_generation = target_get_rdna_generation(target)
         self.tuning = _get_rdna_tuning_config(self.mcpu)
-        if self.rdna_generation not in (11, 12):
+        if self.rdna_generation not in (10, 11, 12):
             arch = self.mcpu or str(target)
-            raise ValueError(f"RDNA device model currently supports gfx11/gfx12 targets only, got {arch}.")
+            raise ValueError(f"RDNA device model currently supports gfx10/gfx11/gfx12 targets only, got {arch}.")
         device = tvm.runtime.rocm(0)
         if not device.exist:
             raise RuntimeError("Cannot find HIP device 0.")

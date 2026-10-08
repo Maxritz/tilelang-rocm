@@ -20,7 +20,7 @@ from tvm.tirx.stmt_functor import pre_order_visit
 from .arch import get_arch, is_tensorcore_supported_precision
 from .arch.cuda import check_sm_version
 from .arch.rdna import _get_rdna_tuning_config
-from tilelang.rocm.target import target_get_mcpu, target_is_rdna
+from tilelang.rocm.target import target_get_mcpu, target_get_rdna_generation, target_is_rdna
 import logging
 
 logger = logging.getLogger(__name__)
@@ -544,7 +544,13 @@ def get_tensorized_func_and_tags(
         return target.kind.name == "cuda" and check_sm_version(target.attrs.get("arch", "")) >= 70
 
     def is_rdna_wmma_target(target: Target) -> bool:
-        return target.kind.name == "hip" and target_is_rdna(target)
+        # RDNA2 (gfx10xx, gen 10) lacks WMMA tensor intrinsics — only
+        # gfx11 (RDNA3) and gfx12 (RDNA4) are WMMA-capable.
+        return (
+            target.kind.name == "hip"
+            and target_is_rdna(target)
+            and target_get_rdna_generation(target) in (11, 12)
+        )
 
     def analysis_tensorcore_tags(sch: Schedule, block: SBlockRV, target: Target) -> bool | dict:
         tags: dict[str, list[int] | int] = {}

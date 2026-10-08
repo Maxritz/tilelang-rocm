@@ -1,5 +1,4 @@
-/*!
- * \file cute_layout.cc
+/*!* \file cute_layout.cc
  * \brief CuTe-style layout IR types and TileLang-to-CuTe layout recovery.
  */
 
